@@ -33,6 +33,24 @@ Probed from outside the LAN:
 
 Conclusion: the KinBridge stack is reachable only from inside the LAN. If you ever add port forwarding to expose the server publicly, **re-run this audit first** — CVE-2026-30784 becomes actionable the moment 21115–21116 is WAN-reachable.
 
+## Lynis deep audit (2026-04-18)
+
+Baseline Lynis hardening index: **62/100**. After the pass below: **71/100**. (Remaining items mostly require reboots, separate partitions, or rkhunter/chkrootkit which add noise for a personal LAN deploy.)
+
+Applied fixes (CIS-aligned):
+
+- **SSH hardening** (`SSH-7408`) via `/etc/ssh/sshd_config.d/10-kinbridge-hardening.conf`:
+  - `MaxAuthTries 3`, `MaxSessions 2`
+  - `X11Forwarding no`, `AllowTcpForwarding no`, `AllowAgentForwarding no`
+  - `LogLevel VERBOSE`
+  - (Port 22 retained — fail2ban handles brute-force. Password auth retained pending explicit key-only lockdown.)
+- **Kernel network protocols** (`NETW-3200`) via `/etc/modprobe.d/kinbridge-hardening.conf`: blocked `dccp`, `sctp`, `rds`, `tipc` from loading.
+- **Umask for new accounts** (`AUTH-9328`) in `/etc/login.defs`: `022 → 027`.
+- **Core dumps disabled** (`KRNL-5820`) via `/etc/security/limits.d/kinbridge-no-core.conf` + `kernel.core_pattern=/dev/null`.
+- **`unattended-upgrades`** (`PKGS-7420`) installed — security patches apply automatically going forward.
+- **`debsums`** (`PKGS-7370`) installed for package-file integrity checks.
+- **Legal banner** (`BANN-7126`/`BANN-7130`) on `/etc/issue` and `/etc/issue.net`.
+
 ## Residual risks / non-remediated
 
 | Item | Severity | Rationale for leaving |
