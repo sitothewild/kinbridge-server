@@ -1,0 +1,37 @@
+version: "3.8"
+
+networks:
+  kinbridge-net:
+    driver: bridge
+
+services:
+  hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: kinbridge-hbbs
+    command: hbbs -r ${RELAY_HOST}:21117
+    ports:
+      - "21115:21115/tcp"
+      - "21116:21116/tcp"
+      - "21116:21116/udp"
+      - "21118:21118/tcp"
+    volumes:
+      - ./data:/root
+      - ./logs/hbbs:/var/log/hbbs
+    networks:
+      - kinbridge-net
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+
+  hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: kinbridge-hbbr
+    command: hbbr
+    ports:
+      - "21117:21117/tcp"
+      - "21119:21119/tcp"
+    volumes:
+      - ./data:/root
+    networks:
+      - kinbridge-net
+    restart: unless-stopped
