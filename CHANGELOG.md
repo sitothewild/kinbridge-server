@@ -21,5 +21,13 @@ All notable changes vs. upstream `rustdesk/rustdesk-server`.
 - 2026-04-18 — `rustdesk-server` v1.1.15 running on Olares at `192.168.68.54` via systemd.
 - Server public key captured into `kinbridge-client/config/SERVER_PUBLIC_KEY.txt`.
 
+### Security hardening (2026-04-18)
+- `id_ed25519` + `db_v2.sqlite3*` permissions tightened from 0644 → 0600.
+- `install.sh` now does a post-start chmod pass so fresh installs land with secure perms.
+- fail2ban installed on Olares with `sshd` jail active.
+- All `noble-security` updates applied (openssl, glibc PAM stack, polkit, etc.).
+- External exposure verified: no RustDesk ports reachable from the internet.
+- Full audit record in `SECURITY.md`, including our plan for mitigating CVE-2026-30784 at the client layer in Phase 3.
+
 ### Upstream sync base
 - Forked from `rustdesk/rustdesk-server@master` on 2026-04-18.

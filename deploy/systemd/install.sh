@@ -80,7 +80,21 @@ echo "==> Enabling + starting services"
 systemctl enable --now kinbridge-hbbr.service
 systemctl enable --now kinbridge-hbbs.service
 
-sleep 2
+sleep 3
+
+# hbbs writes id_ed25519 and db_v2.sqlite3 on first boot with default umask
+# (0644 — world-readable). The Ed25519 *private* key must be 0600.
+# Redo perms post-start so fresh installs are secure.
+echo "==> Tightening data file perms"
+for f in /var/lib/kinbridge/data/id_ed25519 \
+         /var/lib/kinbridge/data/db_v2.sqlite3 \
+         /var/lib/kinbridge/data/db_v2.sqlite3-shm \
+         /var/lib/kinbridge/data/db_v2.sqlite3-wal; do
+  [[ -f "$f" ]] && chmod 0600 "$f" && chown kinbridge:kinbridge "$f"
+done
+# Public key stays world-readable (it's public).
+[[ -f /var/lib/kinbridge/data/id_ed25519.pub ]] && chmod 0644 /var/lib/kinbridge/data/id_ed25519.pub
+
 echo "==> Status"
 systemctl --no-pager --lines=5 status kinbridge-hbbr.service || true
 systemctl --no-pager --lines=5 status kinbridge-hbbs.service || true
