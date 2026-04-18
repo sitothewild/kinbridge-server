@@ -1,0 +1,33 @@
+[Unit]
+Description=KinBridge RustDesk ID/Rendezvous Server (hbbs)
+Documentation=https://rustdesk.com/docs/en/self-host/
+After=network-online.target kinbridge-hbbr.service
+Wants=network-online.target
+Requires=kinbridge-hbbr.service
+
+[Service]
+Type=simple
+User=kinbridge
+Group=kinbridge
+EnvironmentFile=-/etc/kinbridge/hbbs.env
+WorkingDirectory=/var/lib/kinbridge/data
+# RELAY_HOST is the address clients use to reach hbbr. Default set in
+# /etc/kinbridge/hbbs.env. Example: RELAY_HOST=192.168.68.54
+ExecStart=/bin/sh -c '/usr/local/bin/hbbs -r ${RELAY_HOST}:21117'
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/kinbridge
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

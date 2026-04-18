@@ -1,0 +1,29 @@
+[Unit]
+Description=KinBridge RustDesk Relay Server (hbbr)
+Documentation=https://rustdesk.com/docs/en/self-host/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kinbridge
+Group=kinbridge
+WorkingDirectory=/var/lib/kinbridge/data
+ExecStart=/usr/local/bin/hbbr
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/kinbridge
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

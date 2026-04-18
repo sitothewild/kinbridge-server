@@ -1,52 +1,38 @@
-# KinBridge Server Deploy
+# KinBridge Server — Deploy
 
-Self-host the RustDesk signaling + relay stack on a Linux host (Olares).
+Two supported ways to deploy the signaling + relay stack.
 
-## Prerequisites
-- Docker Engine + `docker compose` plugin
-- LAN-reachable host at a known IP (or public DNS)
-- Ports 21115/tcp, 21116/tcp+udp, 21117/tcp, 21118/tcp, 21119/tcp open to clients
+## → Native systemd (recommended, and what we run)
 
-## First deploy
+**Use this** on the Olares host and any plain Ubuntu/Debian box. It drops two binaries + two systemd units and owns no shared infrastructure — no Docker, no Kubernetes, no container runtime concerns.
+
+See **[`systemd/README.md`](systemd/README.md)**.
+
+## → Docker Compose (alternative)
+
+Useful if you're deploying on a host where Docker is the native way to run things and Olares' k3s restrictions don't apply. Not what runs in production today.
 
 ```bash
-# On the server host (e.g. Olares at 192.168.68.54):
-mkdir -p /home/olares/kinbridge-server
-# Copy deploy/ from this repo into that directory, then:
-cd /home/olares/kinbridge-server
 cp .env.example .env
-# Edit .env and set RELAY_HOST to the LAN IP or public DNS
-docker compose up -d
-docker compose logs -f
-```
-
-## Data & keys
-
-The server generates an Ed25519 key pair on first boot under `./data/`:
-- `id_ed25519` — private key. **Never commit this. Back it up.**
-- `id_ed25519.pub` — public key. Baked into client builds.
-
-Losing `id_ed25519` forces every paired client to re-trust the server.
-
-## Capture the public key for client builds
-
-```bash
-cat ./data/id_ed25519.pub
-# Save into kinbridge-client/config/SERVER_PUBLIC_KEY.txt
-```
-
-## Health check
-
-```bash
-# hbbs listens on 21115, 21116, 21118
-# hbbr listens on 21117, 21119
-ss -tulpn | grep -E '2111[5-9]'
-docker compose ps
-```
-
-## Upgrade
-
-```bash
-docker compose pull
+# Edit RELAY_HOST in .env
 docker compose up -d
 ```
+
+## Why not Kubernetes?
+
+We tried. Olares runs on k3s + Calico and injects an admission webhook (`sandbox-inject-webhook.bytetrade.io`) that:
+1. Denies `hostNetwork: true` outright.
+2. Auto-creates a default-deny NetworkPolicy in every namespace that only allows intra-namespace ingress.
+3. Deletes user-created NetworkPolicies that would open ingress to external CIDRs.
+
+That combination makes it impossible to expose raw TCP ports like RustDesk's 21115–21119 via k3s on Olares. Native systemd runs on the Ubuntu underlay, next to k3s, and is unaffected.
+
+## Ports the stack expects
+
+| Port | Proto | Service | Purpose |
+|---|---|---|---|
+| 21115 | TCP | hbbs | ID service |
+| 21116 | TCP+UDP | hbbs | Rendezvous (signaling) |
+| 21117 | TCP | hbbr | Relay |
+| 21118 | TCP | hbbs | Web API / WebSocket |
+| 21119 | TCP | hbbr | Relay (web) |
