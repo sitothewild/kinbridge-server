@@ -13,7 +13,9 @@ import { wsEventRoutes } from "./routes/ws-events.js";
 
 async function buildApp(): Promise<ReturnType<typeof Fastify>> {
   const app = Fastify({
-    logger: log,
+    // Fastify v5 renamed the pre-built-logger option to `loggerInstance`;
+    // passing a pino instance to `logger` is rejected at runtime.
+    loggerInstance: log,
     disableRequestLogging: false,
     trustProxy: true, // behind Cloudflare Tunnel; honor X-Forwarded-For for rate-limit keys
     bodyLimit: 64 * 1024, // 64 KiB — we handle no large payloads
@@ -38,7 +40,9 @@ async function buildApp(): Promise<ReturnType<typeof Fastify>> {
     timeWindow: "1 minute",
     // Key = X-Forwarded-For first hop (Cloudflare Tunnel preserves it), plus
     // a scope (service-token vs anon) so service calls share one bucket.
-    keyGenerator: (req) => `${req.ip}:${req.routerPath ?? "_"}`,
+    // Fastify v5 removed routerPath; use routeOptions.url (the template like
+    // "/api/sessions/:id/end"), falling back to the raw url.
+    keyGenerator: (req) => `${req.ip}:${req.routeOptions?.url ?? req.url}`,
     errorResponseBuilder: () => ({ error: "rate_limited" }),
   });
 

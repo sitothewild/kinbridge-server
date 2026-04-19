@@ -27,8 +27,15 @@ export const log = pino({
     ],
     censor: "[REDACTED]",
   },
-  transport:
-    env.NODE_ENV !== "production"
-      ? { target: "pino-pretty", options: { singleLine: true } }
-      : undefined,
+  // pino's options type doesn't accept `transport: undefined` under strict
+  // exactOptionalPropertyTypes, so spread in the transport block only when
+  // we actually want it.
+  ...(env.NODE_ENV !== "production"
+    ? {
+        transport: {
+          target: "pino-pretty",
+          options: { singleLine: true },
+        },
+      }
+    : {}),
 });
