@@ -9,7 +9,6 @@ import { sessionRoutes } from "./routes/sessions.js";
 import { v1SessionRoutes } from "./routes/v1-sessions.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { helpRequestRoutes } from "./routes/help-requests.js";
-import { authExchangeRoutes } from "./routes/auth-exchange.js";
 import { wsEventRoutes } from "./routes/ws-events.js";
 
 async function buildApp(): Promise<ReturnType<typeof Fastify>> {
@@ -57,7 +56,6 @@ async function buildApp(): Promise<ReturnType<typeof Fastify>> {
 
   app.get("/api/health", async (_req, reply) => reply.code(200).send("ok"));
 
-  await app.register(authExchangeRoutes);
   await app.register(sessionRoutes);
   await app.register(v1SessionRoutes);
   await app.register(deviceRoutes);

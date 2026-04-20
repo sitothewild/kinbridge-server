@@ -39,25 +39,30 @@ class EventHub {
 export const eventHub = new EventHub();
 
 /**
- * WS /ws/events?token=<kinbridge_token>
+ * WS /ws/events
  *
- * Clients (mostly the Lovable dashboard over a WebSocket) subscribe to realtime
- * events. The token is the same kinbridge_token minted by /sessions/start; it
- * authorizes the socket for the lifetime of that session. No renewal — when
- * the session ends the socket is closed and a new one is opened on next start.
+ * Clients subscribe to realtime events. The token is the same kinbridge_token
+ * minted by /sessions/start; it authorizes the socket for the lifetime of that
+ * session. No renewal — when the session ends the socket is closed and a new
+ * one is opened on next start.
+ *
+ * Auth: `Authorization: Bearer <kinbridge_token>` on the HTTP upgrade request.
+ * Tokens are deliberately NOT accepted as a URL query parameter — query
+ * params land in proxy logs, referer headers, and journald. The upgrade
+ * request carries headers like any other HTTP request, so the browser's
+ * WebSocket API can pass the bearer via `Sec-WebSocket-Protocol` negotiation
+ * (see the client's subprotocol handler).
  */
 export async function wsEventRoutes(app: FastifyInstance): Promise<void> {
   app.get("/ws/events", { websocket: true }, async (socket, req) => {
-    const token =
-      typeof (req.query as { token?: unknown }).token === "string"
-        ? (req.query as { token: string }).token
-        : null;
-    if (!token) {
-      socket.close(1008, "missing_token");
+    const authHeader = req.headers.authorization ?? "";
+    const m = /^Bearer\s+(\S+)$/i.exec(authHeader);
+    if (!m) {
+      socket.close(1008, "missing_bearer_token");
       return;
     }
     try {
-      const claims = await verifyKinbridgeToken(token);
+      const claims = await verifyKinbridgeToken(m[1]);
       log.info({ sid: claims.sid }, "ws connected");
       const unsubscribe = eventHub.subscribe((ev) => {
         socket.send(JSON.stringify(ev));

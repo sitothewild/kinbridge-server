@@ -37,13 +37,6 @@ export const HelpRequestBody = z
   .strict();
 export type HelpRequestBody = z.infer<typeof HelpRequestBody>;
 
-export const AuthExchangeBody = z
-  .object({
-    supabase_jwt: z.string().min(1),
-  })
-  .strict();
-export type AuthExchangeBody = z.infer<typeof AuthExchangeBody>;
-
 /** POST /v1/sessions/:id/resolve */
 export const ResolveSessionParams = z
   .object({ id: z.string().uuid() })
