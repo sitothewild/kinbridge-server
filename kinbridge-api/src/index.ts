@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import { env } from "./config.js";
 import { log } from "./lib/log.js";
 import { sessionRoutes } from "./routes/sessions.js";
+import { v1SessionRoutes } from "./routes/v1-sessions.js";
 import { deviceRoutes } from "./routes/devices.js";
 import { helpRequestRoutes } from "./routes/help-requests.js";
 import { authExchangeRoutes } from "./routes/auth-exchange.js";
@@ -58,6 +59,7 @@ async function buildApp(): Promise<ReturnType<typeof Fastify>> {
 
   await app.register(authExchangeRoutes);
   await app.register(sessionRoutes);
+  await app.register(v1SessionRoutes);
   await app.register(deviceRoutes);
   await app.register(helpRequestRoutes);
   await app.register(wsEventRoutes);

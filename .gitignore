@@ -17,3 +17,4 @@ deploy/data/
 deploy/logs/
 kinbridge-release.keystore
 key.properties
+.mcp.json

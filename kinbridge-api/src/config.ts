@@ -35,6 +35,24 @@ const EnvSchema = z.object({
 
   HBBS_LOG_PATH: z.string().optional(),
 
+  // Relay config surfaced by POST /v1/sessions/:id/resolve to the Android
+  // DeepLinkActivity (see android-snippets/README.md in kinbridgesupport).
+  // The client uses these to point its Rust core at hbbs/hbbr.
+  //
+  // RELAY_HOST: hostname or IP the agent should dial. LAN-only today
+  //   (192.168.68.54); will be a tailnet IP once libtailscale is embedded.
+  // RELAY_PORT: hbbr TCP port (21117 on stock RustDesk).
+  // RELAY_PUBKEY: base64 Ed25519 pubkey from /var/lib/kinbridge/data/id_ed25519.pub
+  //   — used by the agent to verify the relay's identity (end-to-end trust).
+  // STUN_URLS: comma-separated STUN/TURN URLs for NAT traversal. Defaults
+  //   to Google's public STUN; swap for a private TURN if/when we host one.
+  KINBRIDGE_RELAY_HOST: z.string().min(1).default("192.168.68.54"),
+  KINBRIDGE_RELAY_PORT: z.coerce.number().int().min(1).max(65535).default(21117),
+  KINBRIDGE_RELAY_PUBKEY: z.string().min(1).default(
+    "WqooDze2t33XwECZ7swZG+2xAk7JL0b9rGqj3I4vzcw=",
+  ),
+  KINBRIDGE_STUN_URLS: z.string().min(1).default("stun:stun.l.google.com:19302"),
+
   RATE_LIMIT_GLOBAL_PER_MIN: z.coerce.number().int().min(1).default(600),
   RATE_LIMIT_AUTH_PER_MIN: z.coerce.number().int().min(1).default(20),
 });
