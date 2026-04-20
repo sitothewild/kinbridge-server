@@ -60,7 +60,8 @@ Zero `librustdesk.so`, zero `rustdesk` strings at binary level.
 |---|---|
 | Onboarding (Welcome → Role → Connect Code → Notifications) | Rendering + navigating |
 | **Sign in** — email/password | ✅ Real Supabase auth, infers KBRole from `user_roles` |
-| **Sign in** — Google OAuth (PKCE via `kinbridge://auth-callback`) | ✅ Wired, **pending test against real Supabase config** |
+| **Sign in** — Google OAuth (PKCE via HTTPS bounce → `kinbridge://auth-callback`) | ✅ Wired. Redirect flow is `redirectTo=https://kinbridge.support/auth-callback` → Lovable-hosted bounce page fires `intent://auth-callback?…#Intent;scheme=kinbridge;package=com.kinbridge.support;end` → existing custom-scheme filter picks it up. Blocked on Wilson verifying the Google provider's managed-credentials toggle in Lovable Cloud admin (earlier 400 "missing OAuth secret"). |
+| **Post-onboarding sign in / sign out** — `KBAccountPage` on the Settings tab | ✅ Replaces the legacy RustDesk SettingsPage as the Settings-tab root. Reactive to Supabase auth-state. Signed-out state surfaces "Sign in" CTA → pushes the onboarding SignInPage fullscreen. Signed-in state shows profile (avatar + display_name/email) + coral Sign out with confirmation dialog. Legacy RustDesk settings pushed as an "Advanced" full-screen route so power-user proxy/WebSocket controls remain reachable. |
 | Owner Home + Helper Home (greeting, recent helpers/devices) | ✅ Real data via SupabaseKBRepository post sign-in |
 | Owner "Need a hand?" → help request | ✅ Helper picker bottom-sheet + session + `help_requested` event insert |
 | Helper "Help now" tile → `startSession` | ✅ Real TanStack server-fn, real sessionId |
@@ -137,31 +138,55 @@ LiveSessionPage (real sessionId)
 2. `redeemInstallToken` returns `{ result: { device: { id, name, platform, owner_id } } }` — nested envelope
 3. `lookupInvite` returns `{ valid:true, inviteId, deviceName, inviterName, note, expiresAt }` on valid; `{ valid:false, reason }` on invalid
 4. `endQuickConnectSession` is live at `POST /_serverFn/endQuickConnectSession`
-5. `/.well-known/assetlinks.json` created in their repo with our cert fingerprint (deploy pending)
+5. `/.well-known/assetlinks.json` **live** at `https://kinbridge.support/.well-known/assetlinks.json` (HTTP 200, cert fingerprint verified 2026-04-20 during security audit)
+6. **Profile APK download card shipped** — `src/components/AndroidAppCard.tsx` pulls the latest release dynamically via `getLatestApkRelease()` (GitHub Releases API), gated by sign-in + Terms acceptance. Tracks every new pre-release automatically.
+7. **In-flight (2026-04-20):** per-endpoint rate limiters on `redeemConnectionCode` (10/min per user — the real brute-force target), `redeemInstallToken` (5/min), `acceptHelperInvite` (5/min), `lookupInvite` (30/min per IP). Ad-hoc Postgres counter table until Lovable Cloud ships proper primitives; function named `kb_rate_limit_v1` with TODO breadcrumb.
+8. **In-flight (2026-04-20):** `POST /heartbeat` server-fn gated by `KINBRIDGE_SERVICE_TOKEN`, called by kinbridge-api (not by the agent directly — see task #4 below), updates `devices.last_seen`. `useDevicePresence` hybridized: Realtime for instant flip + `last_seen < 90s` for cold-open truth.
+9. **`devices.peer_id` endpoint (in-flight 2026-04-20):** `POST /hooks/device-peer` mirrors the heartbeat pattern — service-token auth, `{deviceId, peerId}` body, idempotent upsert. `peer_id` piggybacks the existing `dashboard.functions.ts` device-list payload so helpers can route at session-start without a second round-trip. Validator: `^[A-Za-z0-9_-]{1,64}$`. No null-on-disconnect (peer_id is a stable per-install identifier; `last_seen` answers "reachable right now").
+10. **`user_roles` self-read RLS confirmed (2026-04-20):** policy is `SELECT to authenticated USING (auth.uid() = user_id)`. Empty result means the `handle_new_user` trigger didn't fire at signup, not an RLS block — check `public.user_roles` directly if the signed-in user silently defaults to owner.
+11. **`profiles.display_name` self-read RLS confirmed (2026-04-20):** policy is `SELECT to authenticated USING ((auth.uid() = id) OR <paired-helper/session conditions>)`. Self-read always works; extra disjuncts additively allow paired helpers to see counterparty names. `handle_new_user` trigger populates `display_name = COALESCE(raw_user_meta_data->>'display_name', split_part(email, '@', 1))` so it's always non-null.
+12. **HTTPS OAuth bounce page shipped (2026-04-20):** Lovable Cloud dashboard UI blocks custom-scheme entries in the URI allow list — platform-level validation, no admin override. Chosen workaround: Lovable deployed `https://kinbridge.support/auth-callback` as a bounce page that fires `intent://auth-callback?…#Intent;scheme=kinbridge;package=com.kinbridge.support;end` with the query string preserved, with a 1.5s "get the app / continue on web" fallback. No manifest change on our side — the intent:// URL routes through the existing `kinbridge://auth-callback` custom-scheme filter, not via App Link auto-verify.
 
 **Lovable still on the hook for:**
-- `kinbridge://auth-callback` as an approved Google redirect URL in Supabase (they've enabled Google provider via managed creds; approval of the custom scheme is per-project config)
-- Profile-page logged-in-only APK download card wired to the beta.6 URL above
 - Dashboard "transport: 'web' | 'native'" scaffolding for future browser-viewer (low pri, deferred per your call)
 - Browser viewer component + WebRTC signaling (real feature, weeks of work on agent side — deferred until post-launch)
+- TOTP-lockout recovery runbook (THREAT_MODEL §S11 — `RUNBOOKS.md` TODO)
+
+**Wilson on the hook for (Lovable Cloud admin UI, Lovable has no admin tool for these):**
+- Google OAuth provider — confirm managed-credentials toggle is ON in **Cloud → Users → Auth settings → Sign in methods → Google**, and manual Client ID / Secret fields are empty. Toggle off + back on to re-provision if needed. This is the fix for the `validation_failed: missing OAuth secret` 400 from today's Bluestacks test.
+- URI allow list — Cloud UI rejects custom schemes; no Wilson action needed here since we pivoted to the HTTPS bounce (Item 12 above).
+
+## Recent changes (2026-04-20)
+
+- **Security audit A landed.** Server `cbef183`: `/ws/events` now requires `Authorization: Bearer <kinbridge_token>` on the HTTP upgrade (was `?token=` query param — leaked into CF Tunnel logs, referer headers, journald); `/api/auth/exchange` deleted outright along with the orphan `AuthExchangeBody` schema (it minted tokens with `sid="pending"` — a dead-code trap for any future handler that skipped sid-binding). Client `00c7995bf`: `android:allowBackup="false"` + Android 12+ `data_extraction_rules.xml` excluding every domain from cloud backup and device-to-device transfer — hardens the planned `shared_preferences` auth-storage switch.
+- **Full audit writeup** covers 9 verified findings (1 High / 4 Medium / 4 Low-Info) + the 4 remaining Lovable asks. See the session transcript for the severity-ranked list; THREAT_MODEL.md §S2 confirms `kinbridge_trust.rs mode=off` is correct today (Layer 4, redundant after Lovable's TOTP-gated owner-approval gate).
+- **Post-onboarding sign-in entry added.** New `flutter/lib/kinbridge/shell/kb_account_page.dart` replaces the legacy RustDesk SettingsPage as the Settings-tab root. Closes the UX gap where a user who skipped onboarding's SignInPage or whose session lapsed had no path to Supabase auth without `adb shell pm clear`. Legacy RustDesk settings relocated behind an "Advanced" row (full-screen route, not inline-embedded — avoids nested-scroll).
+- **Google OAuth redirect switched to HTTPS bounce.** `kb_supabase.signInWithGoogle()` now sets `redirectTo: 'https://kinbridge.support/auth-callback'` (was the raw custom scheme). Forced by the Lovable Cloud dashboard UI refusing custom-scheme entries in its URI allow list (platform-level validation). Bounce page on Lovable's side fires `intent://` which routes through the existing `kinbridge://auth-callback` intent-filter. Zero manifest change; no App Link auto-verify path exercised for this flow.
 
 ## Open tasks, ordered
 
-1. **Wilson tests beta.6 on Bluestacks + daughter's tablet.** Walk all three deep-link flows if the Lovable dashboard will mint real tokens. Report what breaks.
-2. **Google OAuth end-to-end test.** Tap "Continue with Google" → browser → pick account → confirm `kinbridge://auth-callback` lands + signs in. If Google provider rejects the callback URL, ping Lovable to add it.
+1. **Wilson tests beta.6 on Bluestacks + daughter's tablet.** Walk all three deep-link flows if the Lovable dashboard will mint real tokens. Report what breaks. Note: beta.6 APK was built before the AndroidManifest backup-disable landed; beta.7 needs a rebuild to pick that up.
+2. **Google OAuth end-to-end test.** Tap "Continue with Google" → browser → pick account → confirm `kinbridge://auth-callback` lands + signs in. If Google provider rejects the callback URL, add it in the Supabase dashboard (Auth → URL Configuration → Additional Redirect URLs).
 3. **Phase IV-b pt.2 — real remote view.** Swap the placeholder container in `LiveSessionPage._RemoteViewSurface` for the real RustDesk frame renderer. Prereq: Lovable adds `devices.peer_id` column OR we register peer IDs via a different path. See `kb_remote_connection.dart` file header for the full wiring plan.
-4. **Desktop KinBridge client.** Rust workspace now builds clean (bin-target compile fixed). Weekend of work to produce signed Windows/Mac/Linux binaries from the same source tree. Ships as the "helper on laptop" tier per Wilson's product plan.
-5. **Helper's side of `help_requested`.** Owner inserts the event fine; helpers need a notification overlay when one fires. Realtime subscription is already available via `KBRealtime.eventsStream`.
-6. **Phase V-b polish:**
+4. **Per-device JWT issuance — unblock heartbeat forwarding.** Partner piece to Lovable's `POST /heartbeat`. Today `kinbridge-api/src/routes/devices.ts:14-36` has the heartbeat endpoint stubbed with `requireServiceToken`, and the forward-to-Lovable call is a TODO. Plan:
+   - **Mint point:** pick one of (a) `redeemInstallToken` response (requires Lovable to call kinbridge-api server-to-server during install-token redemption and embed the JWT in the response device envelope), or (b) new `POST /api/devices/claim` that the agent calls post-install with the install token as proof. (a) is cleaner, (b) is independent of Lovable. Lean (b) for MVP — one fewer cross-service round-trip, and keeps device-credential concerns entirely on our side.
+   - **Token shape:** HS256 signed with `KINBRIDGE_JWT_SECRET`. Claims: `{ device_id, owner_id, type: "device", iat }`. No expiry for MVP — revocation is implicit (Lovable `devices` row deleted → forward-to-Lovable 404s → heartbeat silently fails). Follow-up: add a `jti` + Redis revocation list once we have a device-revocation flow worth supporting.
+   - **Middleware:** new `requireDeviceJwt` in `kinbridge-api/src/middleware/`. Verifies JWT, extracts `device_id`, asserts `req.params.id === device_id` to prevent heartbeat-spoofing across devices.
+   - **Storage on device:** `flutter_secure_storage` on Android (Keystore-backed) — not plain `shared_preferences`. The JWT is essentially a device-lifetime credential and warrants OS-level protection.
+   - **Heartbeat path:** agent → `POST /api/devices/:id/heartbeat` (with device JWT) → kinbridge-api verifies + forwards to Lovable's `POST /heartbeat` with the service token → Lovable writes `last_seen`.
+   - **Effort:** one evening. ~150 lines across the new middleware, the claim endpoint, the devices.ts wiring, plus a Dart `KBDeviceAgent` singleton that holds the device JWT and exposes a `startHeartbeat()` timer.
+5. **Desktop KinBridge client.** Rust workspace now builds clean (bin-target compile fixed). Weekend of work to produce signed Windows/Mac/Linux binaries from the same source tree. Ships as the "helper on laptop" tier per Wilson's product plan.
+6. **Helper's side of `help_requested`.** Owner inserts the event fine; helpers need a notification overlay when one fires. Realtime subscription is already available via `KBRealtime.eventsStream`.
+7. **Phase V-b polish:**
    - Session Detail realtime (Timeline + Chat tabs) — currently pull-on-open; helper pages already have pull-to-refresh
    - Devices bottom-nav tab implementation (list paired devices, last-seen, revoke)
    - Persistent auth storage — swap `_KBMemoryAuthStorage` in `kb_supabase.dart` for a `shared_preferences`-backed impl so cold-boot preserves sign-in
-7. **Play Console submission.** Blocked on Google verification of the developer account (paid $25, awaiting approval). When approved:
-   - Internal Testing track upload of beta.6+ signed APK
+8. **Play Console submission.** Blocked on Google verification of the developer account (paid $25, awaiting approval). When approved:
+   - Internal Testing track upload of beta.7+ signed APK (beta.6 predates the backup-disable; rebuild first)
    - Data Safety form from `docs/legal/PRIVACY.md` bottom section
    - App content declarations for the two sensitive permissions (MediaProjection + AccessibilityService)
-8. **Legal pass.** Drafts in `docs/legal/` need a flat-fee consumer-SaaS legal review + placeholder fill-in before public Play Store launch. Per Wilson's 2026-04-19 call, defer until project end; memory note saved at `project_kinbridge_lawyer_review.md`.
-9. **Security Posture Report.** Promised for end of Week 3. OWASP MASVS L2 / ASVS L2 / CIS baseline map + MobSF + ZAP + pen-test checklist.
+9. **Legal pass.** Drafts in `docs/legal/` need a flat-fee consumer-SaaS legal review + placeholder fill-in before public Play Store launch. Per Wilson's 2026-04-19 call, defer until project end; memory note saved at `project_kinbridge_lawyer_review.md`.
+10. **Security Posture Report.** Promised for end of Week 3. OWASP MASVS L2 / ASVS L2 / CIS baseline map + MobSF + ZAP + pen-test checklist. Today's audit (2026-04-20) covers the app+API layer; this expands to infra (Olares systemd hardening, fail2ban, CF Tunnel config) and adds automated-scanner results.
 
 ## Test recipes (copy-paste-ready)
 
