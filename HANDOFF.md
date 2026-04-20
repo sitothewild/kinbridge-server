@@ -42,6 +42,8 @@ KINBRIDGE_SERVICE_TOKEN=cdb09cbf1a8dd8084ec2af77ea1cde88ea47733941d43dd8d0d92d1e
 - Build artifact target: `/opt/kinbridge-build/target/` (kept off /mnt/d for speed)
 - Brand SVGs: `D:\KinBridge\kinbridge-client\res\brand\`
 - Lovable integration docs (read-only mirror, fetched via `gh`): `D:\KinBridge\lovable-docs\` — `SUPABASE_SCHEMA.md`, `SERVER_FUNCTIONS.md`, `README.md` from [`sitothewild/kinbridgesupport`](https://github.com/sitothewild/kinbridgesupport)
+- **Upload keystore + signing config:** `D:\KinBridge\keystore\kinbridge-upload.keystore` (4096-bit RSA, valid until 2053) + `RECOVERY.md` with passwords and fingerprints. Read by `flutter/android/key.properties` (gitignored). Release APK builds via `flutter build apk --release` — verified signed, R8-shrunk from 108 MB → 26.6 MB, runs clean on Fold emulator. SHA-256 for App Links `/.well-known/assetlinks.json`: `F0:EA:98:E0:EE:C8:5A:2B:A0:84:33:D8:79:16:C3:54:DB:49:B4:91:A3:7E:6A:2E:3D:2B:FB:7B:8A:7C:99:A9`. **Wilson must back up `D:\KinBridge\keystore\` to 1Password.**
+- **Legal drafts:** `docs/legal/PRIVACY.md` + `docs/legal/TERMS.md` — ready to fill placeholders and publish at kinbridge.support/privacy and /terms. Privacy doc includes Play Console Data Safety mapping at the bottom.
 - Emulators:
   - **`kinbridge_pixel9`** — 1440×3120 @ 560dpi, 2GB RAM, GPU host, Android 14 Play Store image. Primary dev target (Pixel 7 Pro device profile — closest to Pixel 9 Pro available in the local toolchain).
   - **`kinbridge_fold`** — 1768×2208 @ 420dpi with hinge sensor (0–180°, 3 postures), for Fold 7 / Fold 8 Wide class testing.
